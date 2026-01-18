@@ -1,5 +1,7 @@
 #include "../include/main.h"
 #include <cmath>
+#include <sstream>
+#include <string>
 #include "lemlib/api.hpp"
 
 pros::MotorGroup left_motors({ -1, 2, -3 }, pros::MotorGearset::green);
@@ -50,27 +52,89 @@ lemlib::Chassis chassis(
 );
 lemlib::PID levelPID(0, 0, 0);
 pros::Controller controller(pros::E_CONTROLLER_MASTER);
-pros::Motor level(8);
+pros::Motor level(8, pros::v5::MotorGears::red);
 pros::Rotation rotation(9);
 pros::Motor intake(-10);
 pros::adi::AnalogOut alignment(1);
 
 int target[] = { 0, 3000, 4500 };
+std::vector<char*> instr;
 
 void initialize() {
 	pros::lcd::initialize();
 	chassis.calibrate();
 	rotation.reset_position();
+	FILE* file = fopen("/usd/auton.rbs", "r");
+	char buf[10000];
+	fread(buf, 1, 10000, file);
+	std::printf("%s\n", buf);
+	char* add = strtok(buf, "\n");
+	do {
+		instr.push_back(add);
+		add = strtok(NULL, "\n");
+	} while (add);
 }
 
 void autonomous() {
-	//TODO
+	intake.set_brake_mode(pros::E_MOTOR_BRAKE_HOLD);
+	level.set_brake_mode(pros::E_MOTOR_BRAKE_HOLD);
+
+	for (int pos = 0; pos <= instr.size(); pos++) {
+		std::string i = instr[pos];
+		std::vector<std::string> tok;
+		std::stringstream ss(i);
+		std::string word;
+		while (ss >> word) { // The >> operator extracts space-separated words
+			tok.push_back(word);
+		}
+
+		if (tok.size() == 0 || tok[0] == "//") {
+			continue;
+		}
+
+		if (tok[0] == "MOVE") {
+			std::vector<float> coords;
+			std::stringstream ss(tok[1]);
+			std::string coord;
+			while (std::getline(ss, coord, ',')) { // The >> operator extracts space-separated words
+				coords.push_back(std::stof(coord));
+			}
+			chassis.moveToPose(coords[0], coords[1], coords[2], std::stof(tok[2]));
+		} else if (tok[0] == "INTAKE") {
+			intake.move(tok[1] == "forward" ? 127 : tok[1] == "reverse" ? -127 : 0);
+			if (tok[1] == "stop") {
+				intake.brake();
+			}
+		} else if (tok[0] == "LEVEL") {
+			bool close;
+			do {
+				int current = rotation.get_position();
+				int error;
+				if (tok[1] == "up") {
+					error = target[2] - current;
+				} else if (tok[1] == "middle") {
+					error = target[1] - current;
+				} else if (tok[1] == "down") {
+					error = target[0] - current;
+				} else {
+					throw 1;
+				}
+				level.move_relative(levelPID.update(error), 100);
+				close = error <= 100;
+			} while (!close);
+		} else if (tok[0] == "ALIGN") {
+			alignment.set_value(tok[1] == "out");
+		}
+	}
 }
 
 void opcontrol() {
 	bool intake_moving = false;
 	bool last_changed = false;
 	bool aligned = false;
+
+	intake.set_brake_mode(pros::E_MOTOR_BRAKE_HOLD);
+	level.set_brake_mode(pros::E_MOTOR_BRAKE_HOLD);
 
 	while (true) {
 		pros::lcd::print(0, "X: %f", chassis.getPose().x);
@@ -82,7 +146,6 @@ void opcontrol() {
 		chassis.curvature(left_thumbstick, right_thumbstick, false);
 
 		if (controller.get_digital(DIGITAL_B) == 1 && intake.get_power() > 0.1) {
-			intake.set_brake_mode(pros::E_MOTOR_BRAKE_HOLD);
 			intake.brake();
 			intake_moving = false;
 		} else if (controller.get_digital(DIGITAL_A) == 1) {
@@ -111,7 +174,6 @@ void opcontrol() {
 			level.move_relative(levelPID.update(target[0] - current), 100);
 		} else {
 			level.move(0);
-			level.set_brake_mode(pros::E_MOTOR_BRAKE_HOLD);
 			level.brake();
 		}
 
