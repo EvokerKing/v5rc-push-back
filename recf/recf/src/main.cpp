@@ -99,13 +99,7 @@ void autonomous() {
 		}
 
 		if (tok[0] == "MOVE") {
-			std::vector<float> coords;
-			std::stringstream ss(tok[1]);
-			std::string coord;
-			while (std::getline(ss, coord, ',')) { // The >> operator extracts space-separated words
-				coords.push_back(std::stof(coord));
-			}
-			chassis.moveToPose(coords[0], coords[1], coords[2], std::stof(tok[2]));
+			chassis.moveToPose(std::stof(tok[2]), std::stof(tok[3]), std::stof(tok[4]), std::stof(tok[5]));
 		} else if (tok[0] == "INTAKE") {
 			intake.move(tok[1] == "forward" ? 127 : tok[1] == "reverse" ? -127 : 0);
 			if (tok[1] == "stop") {
