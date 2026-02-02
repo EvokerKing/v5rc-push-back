@@ -55,76 +55,116 @@ pros::Controller controller(pros::E_CONTROLLER_MASTER);
 pros::Motor level(14, pros::v5::MotorGears::red);
 pros::Rotation rotation(12);
 pros::Motor intake(-7);
-pros::adi::AnalogOut alignment(1);
+pros::adi::DigitalOut alignment(1);
 pros::adi::DigitalIn lever(8);
 
 int start_position;
-int target[] = { 0, 5000, 8000 };
+int target[] = { 0, 5000, 7100 };
 std::vector<char*> instr;
 
 void initialize() {
 	pros::lcd::initialize();
 	chassis.calibrate();
 	rotation.reset();
-	start_position = rotation.get_position();
 
-	FILE* file = fopen(lever.get_value() ? "/usd/autonL.rbs" : "/usd/autonR.rbs", "r");
-	if (file != nullptr) {
-		char buf[10000];
-		fread(buf, 1, 10000, file);
-		std::printf("%s\n", buf);
-		char* add = strtok(buf, "\n");
-		do {
-			instr.push_back(add);
-			add = strtok(NULL, "\n");
-		} while (add);
-	}
+	// FILE* file = fopen(lever.get_value() ? "/usd/autonL.rbs" : "/usd/autonR.rbs", "rw");
+	// if (file != nullptr) {
+	// 	char buf[10000];
+	// 	fread(buf, 1, 10000, file);
+	// 	std::printf("%s\n", buf);
+	// 	char* add = strtok(buf, "\n");
+	// 	do {
+	// 		instr.push_back(add);
+	// 		add = strtok(NULL, "\n");
+	// 	} while (add);
+	// }
 }
 
 void autonomous() {
 	intake.set_brake_mode(pros::E_MOTOR_BRAKE_HOLD);
 	level.set_brake_mode(pros::E_MOTOR_BRAKE_HOLD);
+	start_position = rotation.get_position();
 
-	for (int pos = 0; pos <= instr.size(); pos++) {
-		std::string i = instr[pos];
-		std::vector<std::string> tok;
-		std::stringstream ss(i);
-		std::string word;
-		while (ss >> word) { // The >> operator extracts space-separated words
-			tok.push_back(word);
-		}
+	// for (int pos = 0; pos <= instr.size(); pos++) {
+	// 	std::string i = instr[pos];
+	// 	std::vector<std::string> tok;
+	// 	std::stringstream ss(i);
+	// 	std::string word;
+	// 	while (ss >> word) { // The >> operator extracts space-separated words
+	// 		tok.push_back(word);
+	// 	}
+	//
+	// 	if (tok.size() == 0 || tok[0] == "//") {
+	// 		continue;
+	// 	}
+	//
+	// 	if (tok[0] == "MOVE") {
+	// 		chassis.moveToPose(std::stof(tok[2]), std::stof(tok[3]), std::stof(tok[4]), std::stof(tok[5]));
+	// 	} else if (tok[0] == "INTAKE") {
+	// 		intake.move(tok[1] == "forward" ? 127 : tok[1] == "reverse" ? -127 : 0);
+	// 		if (tok[1] == "stop") {
+	// 			intake.brake();
+	// 		}
+	// 	} else if (tok[0] == "LEVEL") {
+			// bool close;
+			// do {
+			// 	int current = rotation.get_position() - start_position;
+			// 	int error;
+			// 	if (tok[1] == "up") {
+			// 		error = target[2] - current;
+			// 	} else if (tok[1] == "middle") {
+			// 		error = target[1] - current;
+			// 	} else if (tok[1] == "down") {
+			// 		error = target[0] - current;
+			// 	} else {
+			// 		throw 1;
+			// 	}
+			// 	level.move(levelPID.update(error));
+			// 	close = error <= 100;
+			// } while (!close);
+	// 	} else if (tok[0] == "ALIGN") {
+	// 		alignment.set_value(tok[1] == "out");
+	// 	}
+	// }
 
-		if (tok.size() == 0 || tok[0] == "//") {
-			continue;
-		}
-
-		if (tok[0] == "MOVE") {
-			chassis.moveToPose(std::stof(tok[2]), std::stof(tok[3]), std::stof(tok[4]), std::stof(tok[5]));
-		} else if (tok[0] == "INTAKE") {
-			intake.move(tok[1] == "forward" ? 127 : tok[1] == "reverse" ? -127 : 0);
-			if (tok[1] == "stop") {
-				intake.brake();
-			}
-		} else if (tok[0] == "LEVEL") {
-			bool close;
-			do {
-				int current = rotation.get_position() - start_position;
-				int error;
-				if (tok[1] == "up") {
-					error = target[2] - current;
-				} else if (tok[1] == "middle") {
-					error = target[1] - current;
-				} else if (tok[1] == "down") {
-					error = target[0] - current;
-				} else {
-					throw 1;
-				}
-				level.move(levelPID.update(error));
-				close = error <= 100;
-			} while (!close);
-		} else if (tok[0] == "ALIGN") {
-			alignment.set_value(tok[1] == "out");
-		}
+	if (lever.get_value()) {
+		intake.move(127);
+		pros::delay(500);
+		chassis.moveToPose(-1.7, 47.5, -3.2, 1500);
+		pros::delay(400);
+		chassis.turnToHeading(-17.3, 250);
+		chassis.moveToPose(-10, 79.5, -1.5, 2000);
+		chassis.turnToHeading(173, 500);
+		chassis.moveToPose(-9.3, 30, -153, 2000);
+		intake.move(0);
+		intake.brake();
+		chassis.moveToPose(-51.5, 25.5, 5.4, 2000);
+		pros::lcd::print(0, "test");
+		bool close;
+		do {
+			pros::delay(1000);
+			int current = rotation.get_position();
+			pros::lcd::print(1, "level: %d", current - start_position);
+			int error = current - target[2];
+			int debug = -1 * levelPID.update(error / 100);
+			level.move(debug > 127 || debug < -127 ? (debug < -127 ? -127 : 127) : debug);
+			pros::lcd::print(2, "pid: %d", debug);
+			close = error <= 100;
+		} while (!close);
+		level.brake();
+	} else {
+		intake.move(127);
+		pros::delay(500);
+		chassis.moveToPose(1.7, 47.5, 3.2, 1500);
+		pros::delay(400);
+		chassis.turnToHeading(17.3, 250);
+		chassis.moveToPose(10, 79.5, 1.5, 2000);
+		chassis.turnToHeading(197, 500);
+		chassis.moveToPose(9.3, 30, 153, 2000);
+		intake.move(0);
+		intake.brake();
+		chassis.moveToPose(51.5, 25.5, -5.4, 2000);
+		chassis.moveToPose(47, 53.5, -2.9, 1500);
 	}
 }
 
@@ -197,17 +237,24 @@ void opcontrol() {
 			level.brake();
 		}
 
+		// if (controller.get_digital(DIGITAL_X) == 1) {
+		// 	if (aligned && !last_changed) {
+		// 		alignment.set_value(false);
+		// 		aligned = false;
+		// 	} else if (!aligned && !last_changed) {
+		// 		alignment.set_value(true);
+		// 		aligned = true;
+		// 	}
+		// 	last_changed = true;
+		// } else {
+		// 	last_changed = false;
+		// }
+
 		if (controller.get_digital(DIGITAL_X) == 1) {
-			if (aligned && !last_changed) {
-				alignment.set_value(false);
-				aligned = false;
-			} else if (!aligned && !last_changed) {
-				alignment.set_value(true);
-				aligned = true;
-			}
-			last_changed = true;
-		} else {
-			last_changed = false;
+			left_motors.set_brake_mode(MOTOR_BRAKE_HOLD);
+			left_motors.brake();
+			right_motors.set_brake_mode(MOTOR_BRAKE_HOLD);
+			right_motors.brake();
 		}
 
 		pros::delay(35);
